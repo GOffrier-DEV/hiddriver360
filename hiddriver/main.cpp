@@ -1122,12 +1122,10 @@ int interruptHandler(DWORD deviceHandle, int32_t a2) {
 				uint8_t pR = rawBuf[6 + off];
 				// Right turntable quirk (PCSX2 #9775): clamp 127 to 128
 				if (pR == 127) pR = 128;
-				// Convert 8-bit centered to 16-bit signed at 1/4 gain
-				// Platter deviates only ±5-30 from center during normal scratching;
-				// *256 mapped that to ±1280-7680, making the turntable too twitchy.
-				// *64 gives a controlled ±320-1920 range matching the native feel.
-				int32_t pX = ((int32_t)pL - 128) * 64;
-				int32_t pY = ((int32_t)pR - 128) * 64;
+				// Don't scale — the platter is an 8-bit fixed-position sensor
+				// and the game expects raw small values centered at 0.
+				int32_t pX = (int32_t)pL - 128;
+				int32_t pY = (int32_t)pR - 128;
 				if (pX < -32768) pX = -32768; if (pX > 32767) pX = 32767;
 				if (pY < -32768) pY = -32768; if (pY > 32767) pY = 32767;
 				buttonReport.x = (int16_t)pX;
