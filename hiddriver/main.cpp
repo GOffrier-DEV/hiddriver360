@@ -1357,7 +1357,7 @@ int HidAddDeviceHook(deviceHandle* deviceHandle) {
 	return HidAddDeviceDetour.GetOriginal<decltype(&HidAddDeviceHook)>()(deviceHandle);
 }
 
-DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_STATE* pInputState, BYTE bAmplitude, BYTE bFrequency, BYTE bOffset) {
+DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_VIBRATION* vibration) {
 	if ((user & 0xFF) == 0xFF)
 		user = 0;
 
@@ -1372,16 +1372,9 @@ DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_STATE* pInputState, B
 	}
 
 	if (c && c->isTurntable) {
-		// Game may signal euphoria LED via vibration/amplitude data.
-		// Determine LED state from whatever parameter carries it.
-		uint8_t newLed = 0;
-		if (pInputState) {
-			// Some games send LED state through the state struct
-			newLed = pInputState->Gamepad.wButtons ? 1 : 0;
-		} else {
-			// Most rhythm games use amplitude for LED (non-zero = on)
-			newLed = (bAmplitude != 0 || bFrequency != 0) ? 1 : 0;
-		}
+		// Game signals euphoria LED via left rumble motor (wLeftMotorSpeed).
+		// Per Santroller/reversing: 65535 = LED on, 0 = LED off.
+		uint8_t newLed = (vibration && vibration->wLeftMotorSpeed >= 32768) ? 1 : 0;
 		if (newLed != c->euphoriaLedState) {
 			c->euphoriaLedState = newLed;
 			static uint8_t report[8];
@@ -1397,7 +1390,7 @@ DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_STATE* pInputState, B
 		return ERROR_SUCCESS;
 	}
 
-	DWORD status = XamInputSetStateDetour.GetOriginal<decltype(&XamInputSetStateHook)>()(user, flags, pInputState, bAmplitude, bFrequency, bOffset);
+	DWORD status = XamInputSetStateDetour.GetOriginal<decltype(&XamInputSetStateHook)>()(user, flags, vibration);
 
 	if (status == ERROR_DEVICE_NOT_CONNECTED) {
 		if (!c)
