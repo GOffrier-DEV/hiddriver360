@@ -1,0 +1,45 @@
+Euphoria LED Fix -- Quick Reference Document
+=============================================
+
+1. XamInputSetState signature -- Xenia emulator
+   File: xenia/src/kernel/xam/xam_input.cc
+   
+   XamInputSetState(DWORD user_index, DWORD unk, XINPUT_VIBRATION* vibration)
+   
+   - 3 parameters (not 6 as our original hook assumed)
+   - 3rd param is XINPUT_VIBRATION*, not XINPUT_STATE*
+   - Exported at ordinal 402 (xenia/src/kernel/xam/xam_table.inc)
+
+2. LED mapping -- Santroller firmware
+   File: santroller/configs/XboxOriginal.cpp
+   
+   Left motor  -> euphoria LED (0 or 255)
+   Right motor -> rumble       (0 or 255)
+   
+   wLeftMotorSpeed >= 32768 -> LED on
+   wLeftMotorSpeed == 0     -> LED off
+
+3. Our implementation
+   File: hiddriver/main.cpp:1360-1402
+   
+   DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_VIBRATION* vibration)
+   {
+       if (c && c->isTurntable)
+       {
+           uint8_t newLed = (vibration && vibration->wLeftMotorSpeed >= 32768) ? 1 : 0;
+           // Send SET_REPORT to update LED
+       }
+   }
+
+4. XINPUT_VIBRATION struct (Xbox 360 SDK via <xtl.h>)
+   typedef struct _XINPUT_VIBRATION
+   {
+       WORD wLeftMotorSpeed;   // offset 0, left rumble / euphoria LED
+       WORD wRightMotorSpeed;  // offset 2, right rumble
+   } XINPUT_VIBRATION, *PXINPUT_VIBRATION;
+
+5. Bug root cause
+   Old hook declared 6 parameters and read bFrequency (register r7) for the
+   LED state. But r7 is not a real parameter -- only r3-r5 are used by the
+   3-param function. bFrequency was stale stack garbage, so the LED never
+   triggered reliably. The real data was in the XINPUT_VIBRATION* (r5).
