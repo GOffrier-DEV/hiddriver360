@@ -514,6 +514,17 @@ int32_t setConfigurationComplete(DWORD deviceHandle, int32_t status) {
 				(void*)DS3_HANDSHAKE, 
 				(DWORD)noopCompleteHandler);
 		}
+		if (c.isTurntable) {
+			DbgPrint("EINTIM: Sending turntable LED init\r\n");
+			static uint8_t initLedReport[8];
+			memcpy(initLedReport, turntable_led_report, sizeof(initLedReport));
+			initLedReport[2] = 1;  // LED on
+			SendControlRequest(controllerDriver->deviceHandle,
+				&controllerDriver->controlTrb,
+				0x21, 0x09, 0x0201, 0,
+				sizeof(initLedReport), initLedReport,
+				(DWORD)noopCompleteHandler);
+		}
 		return UsbdQueueAsyncTransfer(controllerDriver->deviceHandle, &controllerDriver->interruptTrb);
 	}
 
@@ -1372,10 +1383,16 @@ DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_STATE* pInputState, B
 	}
 
 	if (c && c->isTurntable) {
-		// Game signals euphoria LED via non-zero vibration amplitude.
-		// Blinking (meter full but not activated) is done by the game
-		// rapidly toggling the value.
-		uint8_t newLed = (bAmplitude != 0) ? 1 : 0;
+		// Game may signal euphoria LED via vibration/amplitude data.
+		// Determine LED state from whatever parameter carries it.
+		uint8_t newLed = 0;
+		if (pInputState) {
+			// Some games send LED state through the state struct
+			newLed = pInputState->Gamepad.wButtons ? 1 : 0;
+		} else {
+			// Most rhythm games use amplitude for LED (non-zero = on)
+			newLed = (bAmplitude != 0 || bFrequency != 0) ? 1 : 0;
+		}
 		if (newLed != c->euphoriaLedState) {
 			c->euphoriaLedState = newLed;
 			static uint8_t report[8];
