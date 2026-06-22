@@ -294,7 +294,7 @@ struct MappingState {
 	uint8_t reportId;
 	HID_ReportInfo_t* reportInfo;
 	int controllerIndex;
-	uint8_t availableButtons[256];
+	uint8_t availableButtons[64];
 	uint8_t availableButtonCount;
 	volatile uint8_t previousPressedButtonIdx;
 	volatile uint32_t holdCount;
@@ -559,7 +559,7 @@ HID_ReportItem_t* FindHatItem(HID_ReportInfo_t* info, uint8_t reportId) {
 void DiscoverAvailableButtons(HID_ReportInfo_t* info, uint8_t reportId,
                               uint8_t* outButtonIndices, uint8_t* outCount) {
 	uint8_t count = 0;
-	for (HID_ReportItem_t* item = info->FirstReportItem; item && count < 256; item = item->Next) {
+	for (HID_ReportItem_t* item = info->FirstReportItem; item && count < 64; item = item->Next) {
 		if (item->ItemType != HID_REPORT_ITEM_In)
 			continue;
 		if (item->Attributes.Usage.Page != HID_USAGE_PAGE_BUTTON)
@@ -745,7 +745,7 @@ unsigned int __stdcall MappingThreadProc(void* param) {
 		return -1;
 
 	// Discover available buttons and axes
-	uint8_t availableButtons[256] = {};
+	uint8_t availableButtons[64] = {};
 	uint8_t buttonCount = 0;
 	DiscoverAvailableButtons(info, reportId, availableButtons, &buttonCount);
 
@@ -808,8 +808,8 @@ unsigned int __stdcall MappingThreadProc(void* param) {
 		if (!g_mappingState.active)
 			break;
 
-		static wchar_t msg[256];
-		swprintf(msg, 256, L"Press %hs on controller (hold 3s to skip)", xbox_buttons[i].xbox_name);
+		static wchar_t msg[128];
+		swprintf(msg, 128, L"Press %hs on controller (hold 3s to skip)", xbox_buttons[i].xbox_name);
 		XNotifyUI(XNOTIFYUI_CUSTOM, msg);
 
 		uint8_t previousButtonIdx = 0xFF;
@@ -868,8 +868,8 @@ unsigned int __stdcall MappingThreadProc(void* param) {
 		};
 
 		for (size_t i = 0; i < sizeof(dpad_buttons) / sizeof(dpad_buttons[0]); i++) {
-			wchar_t msg[256];
-			swprintf(msg, 256, L"Press %hs on controller (hold 3s to skip)", dpad_buttons[i].dpad_name);
+			wchar_t msg[128];
+			swprintf(msg, 128, L"Press %hs on controller (hold 3s to skip)", dpad_buttons[i].dpad_name);
 			XNotifyUI(XNOTIFYUI_CUSTOM, msg);
 
 			uint8_t previousButtonIdx = 0xFF;

@@ -248,7 +248,7 @@ private:
             return false;
     }
 
-    static const int kDefaultChunkCapacity = 64 * 1024; //!< Default chunk capacity.
+    static const int kDefaultChunkCapacity = 4 * 1024; //!< Default chunk capacity (reduced from 64KB).
 
     //! Chunk header for perpending to each chunk.
     /*! Chunks are stored as a singly linked list.
