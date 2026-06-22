@@ -48,7 +48,7 @@ struct usb_endpoint_descriptor {
 	uint8_t  bDescriptorType;  // ENDPOINT descriptor type (5)
 	uint8_t  bEndpointAddress; // Endpoint address and direction:
 							   // Bit 7: Direction (0=OUT, 1=IN)
-							   // Bits 3..0: Endpoint number (1–15)
+							   // Bits 3..0: Endpoint number (1ï¿½15)
 	uint8_t  bmAttributes;     // Transfer type:
 							   // Bits 1..0: 00=Control, 01=Isochronous, 10=Bulk, 11=Interrupt
 							   // For Isochronous and Interrupt, additional bits define usage
@@ -84,6 +84,14 @@ enum HatSwitch {
 #define HID_USAGE_GAMEPAD       0x05
 #define HID_USAGE_JOYSTICK      0x04
 
+#ifndef XINPUT_DEVSUBTYPE_DJ_TURNTABLE
+#define XINPUT_DEVSUBTYPE_DJ_TURNTABLE 0x17
+#endif
+
+#define PS3_DJH_TURNTABLE_VID 0x12BA
+#define PS3_DJH_TURNTABLE_PID 0x0140
+#define PS3_DJH2_TURNTABLE_PID 0x0150
+
 #pragma pack(push, 1)
 struct Report {
 	uint8_t reportId;
@@ -118,5 +126,10 @@ struct ButtonsReport {
 	uint8_t r1;
 	uint8_t l1;
 	uint8_t xbox;
+
+	// Turntable color buttons (encoded into bRightTrigger bits for DJ Hero)
+	uint8_t turntable_green;
+	uint8_t turntable_red;
+	uint8_t turntable_blue;
 };
 #pragma pack(pop)

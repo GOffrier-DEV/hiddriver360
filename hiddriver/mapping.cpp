@@ -1,4 +1,6 @@
 #include "mapping.h"
+#include <xtl.h>
+#include <xkelib.h>
 #include <string.h>
 #include <vector>
 #include <memory>
@@ -13,13 +15,26 @@
 #include <cstdio>
 
 static const HidAxisMapEntry kDefaultAxisMap[] = {
-    { HID_USAGE_AXIS_X,  &ButtonsReport::x  },
-    { HID_USAGE_AXIS_Y,  &ButtonsReport::y  },
-    { HID_USAGE_AXIS_Z,  &ButtonsReport::z  },
-    { HID_USAGE_AXIS_RX, &ButtonsReport::rx },
-    { HID_USAGE_AXIS_RY, &ButtonsReport::ry },
-    { HID_USAGE_AXIS_RZ, &ButtonsReport::rz },
+    { HID_USAGE_AXIS_X,  0, &ButtonsReport::x  },
+    { HID_USAGE_AXIS_Y,  0, &ButtonsReport::y  },
+    { HID_USAGE_AXIS_Z,  0, &ButtonsReport::z  },
+    { HID_USAGE_AXIS_RX, 0, &ButtonsReport::rx },
+    { HID_USAGE_AXIS_RY, 0, &ButtonsReport::ry },
+    { HID_USAGE_AXIS_RZ, 0, &ButtonsReport::rz },
 };
+
+// PS3 DJ Hero Turntable axis map
+// Uses raw byte offsets because the dongle's HID descriptor doesn't match the turntable's custom report format.
+// Report format (27 bytes, from live HID dumps):
+//   byte 5  = Platter X (8-bit, center 0x80)
+//   byte 6  = Platter Y (8-bit, center 0x80)
+//   bytes 19-20 = Effects dial (10-bit, 512 center, needs custom unpacking)
+//   bytes 21-22 = Crossfader (10-bit, 512 center, needs custom unpacking)
+static const HidAxisMapEntry kTurntableAxisMap[] = {
+    { 0, 5, &ButtonsReport::x  },   // Platter X -> Left Stick X
+    { 0, 6, &ButtonsReport::y  },   // Platter Y -> Left Stick Y
+};
+
 
 static const HidButtonMapEntry kPlayStationButtonMapping[] = {
     { 1,  &ButtonsReport::a_button    },
@@ -55,11 +70,11 @@ static const HidButtonMapEntry kDualShock3ButtonMapping[] = {
     { 6, &ButtonsReport::dpad_down },
 };
 
-
 static HidDeviceMapping kStaticDeviceMappings[] = {
     // ds3
     {   
         1356, 616,
+        XINPUT_DEVSUBTYPE_GAMEPAD, 0,
         kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
         kDualShock3ButtonMapping, sizeof(kDualShock3ButtonMapping) / sizeof(kDualShock3ButtonMapping[0]),
         {false, true, false, false, false, true},
@@ -67,6 +82,7 @@ static HidDeviceMapping kStaticDeviceMappings[] = {
     // ds4 v2
     {
         1356, 2508,
+        XINPUT_DEVSUBTYPE_GAMEPAD, 0,
         kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
         kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
         {false, true, false, false, false, true},
@@ -75,6 +91,7 @@ static HidDeviceMapping kStaticDeviceMappings[] = {
     // ds4 v1
     {
         1356, 1476,
+        XINPUT_DEVSUBTYPE_GAMEPAD, 0,
         kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
         kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
         {false, true, false, false, false, true},
@@ -83,6 +100,7 @@ static HidDeviceMapping kStaticDeviceMappings[] = {
     // ds4 wireless adapter
    {
        1356, 0x0BA0,
+       XINPUT_DEVSUBTYPE_GAMEPAD, 0,
        kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
        kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
        {false, true, false, false, false, true},
@@ -91,6 +109,7 @@ static HidDeviceMapping kStaticDeviceMappings[] = {
     // dualsense
     {
         1356, 3302,
+        XINPUT_DEVSUBTYPE_GAMEPAD, 0,
         kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
         kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
         {false, true, false, false, false, true},
@@ -99,6 +118,7 @@ static HidDeviceMapping kStaticDeviceMappings[] = {
     // dualsense edge
     {
         1356, 0x0DF2,
+        XINPUT_DEVSUBTYPE_GAMEPAD, 0,
         kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
         kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
         {false, true, false, false, false, true},
@@ -107,9 +127,30 @@ static HidDeviceMapping kStaticDeviceMappings[] = {
     // switch pro controller(This is a dummy mapping as their HID descriptor is broken)
     {
         0x057E, 0x2009,
+        XINPUT_DEVSUBTYPE_GAMEPAD, 0,
         kDefaultAxisMap,  sizeof(kDefaultAxisMap) / sizeof(kDefaultAxisMap[0]),
         kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
         {false, true, false, false, false, true},
+    },
+
+    // PS3 DJ Hero Turntable (RedOctane DJ)
+    // Button mapping follows Santroller:
+    //   green -> A, red -> B, blue -> X, euphoria -> Y
+    {
+        0x12BA, 0x0140,
+        XINPUT_DEVSUBTYPE_DJ_TURNTABLE, 0,
+        kTurntableAxisMap,  sizeof(kTurntableAxisMap) / sizeof(kTurntableAxisMap[0]),
+        kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
+        {false, false, false, false, false, false},
+    },
+
+    // PS3 DJ Hero 2 Turntable
+    {
+        0x12BA, 0x0150,
+        XINPUT_DEVSUBTYPE_DJ_TURNTABLE, 0,
+        kTurntableAxisMap,  sizeof(kTurntableAxisMap) / sizeof(kTurntableAxisMap[0]),
+        kPlayStationButtonMapping, sizeof(kPlayStationButtonMapping) / sizeof(kPlayStationButtonMapping[0]),
+        {false, false, false, false, false, false},
     },
 };
 

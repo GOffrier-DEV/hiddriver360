@@ -8,6 +8,7 @@
 
 struct HidAxisMapEntry {
     uint16_t usage;
+    uint16_t raw;
     int16_t ButtonsReport::* field;
 };
 
@@ -28,6 +29,9 @@ struct HidAxisInvertFlags {
 struct HidDeviceMapping {
     uint16_t vendorId;
     uint16_t productId;
+
+    uint8_t subType;
+    uint16_t flags;
 
     const HidAxisMapEntry* axisMap;
     uint8_t axisMapCount;

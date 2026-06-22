@@ -278,6 +278,10 @@ struct Controller {
 	// for nintendo specific handshake
 	NINTENDO_HANDSHAKE_STATE nintendo_handshake_state;
 	UsbTrb interruptTrb;
+
+	// Turntable-specific
+	bool isTurntable;
+	uint16_t prevEffect;  // for relative effects dial delta
 } __declspec(align(4));
 
 struct MappingState {
@@ -447,8 +451,6 @@ int32_t setConfigurationComplete(DWORD deviceHandle, int32_t status) {
 			return -1;
 		}
 
-		DbgPrint("EINTIM: parse done stage 1\r\n");
-		g_InitState = InitState::INIT_DONE;
 
 		c.reportInfo = reportInfo;
 		c.reportId = FindGamepadReportId(reportInfo);
@@ -457,6 +459,9 @@ int32_t setConfigurationComplete(DWORD deviceHandle, int32_t status) {
 			(int)reportInfo->UsingReportIDs, c.reportId);
 
 		free(reportDescriptorBuffer);
+
+		DbgPrint("EINTIM: parse done stage 1\r\n");
+		g_InitState = InitState::INIT_DONE;
 
 		usb_endpoint_descriptor* endpoint_descriptor = UsbdGetEndpointDescriptor(
 			controllerDriver->deviceHandle, 0, USB_ENDPOINT_TYPE_INTERRUPT, USB_DIRECTION_IN);
@@ -600,61 +605,65 @@ void HidFillButtonsReport(
 	for (uint8_t i = 0; i < axisCount; i++) {
 		const auto& entry = axisMap[i];
 
-		HID_ReportItem_t* item = FindItemByUsage(
-			info,
-			HID_USAGE_PAGE_GENERIC_DESKTOP,
-			entry.usage,
-			reportId
-		);
+		if (entry.raw) {
+			out->*entry.field = ((int32_t)payload[entry.raw] << 8) - 32768;
+		} else {
+			HID_ReportItem_t* item = FindItemByUsage(
+				info,
+				HID_USAGE_PAGE_GENERIC_DESKTOP,
+				entry.usage,
+				reportId
+			);
 
-		if (!item || !USB_GetHIDReportItemInfo(reportId, payload, item))
-			continue;
+			if (!item || !USB_GetHIDReportItemInfo(reportId, payload, item))
+				continue;
 
-		int32_t logMin = (int32_t)item->Attributes.Logical.Minimum;
-		int32_t logMax = (int32_t)item->Attributes.Logical.Maximum;
-		int32_t raw = (int32_t)item->Value;
+			int32_t logMin = (int32_t)item->Attributes.Logical.Minimum;
+			int32_t logMax = (int32_t)item->Attributes.Logical.Maximum;
+			int32_t raw = (int32_t)item->Value;
 
-		int32_t result = 0;
+			int32_t result = 0;
 
-		if (logMax > logMin) {
-			if (raw < logMin) raw = logMin;
-			if (raw > logMax) raw = logMax;
+			if (logMax > logMin) {
+				if (raw < logMin) raw = logMin;
+				if (raw > logMax) raw = logMax;
 
-			int64_t numerator = (int64_t)(raw - logMin) * 65535;
-			int32_t denominator = (logMax - logMin);
+				int64_t numerator = (int64_t)(raw - logMin) * 65535;
+				int32_t denominator = (logMax - logMin);
 
-			int32_t scaled = (int32_t)((numerator + denominator / 2) / denominator);
-			result = scaled - 32768;
+				int32_t scaled = (int32_t)((numerator + denominator / 2) / denominator);
+				result = scaled - 32768;
+			}
+			else {
+				result = raw;
+			}
+
+			// apply inversion
+			switch (entry.usage) {
+			case HID_USAGE_AXIS_X:
+				if (map->invert.invertX) result = -result;
+				break;
+			case HID_USAGE_AXIS_Y:
+				if (map->invert.invertY) result = -result;
+				break;
+			case HID_USAGE_AXIS_Z:
+				if (map->invert.invertZ) result = -result;
+				break;
+			case HID_USAGE_AXIS_RX:
+				if (map->invert.invertRX) result = -result;
+				break;
+			case HID_USAGE_AXIS_RY:
+				if (map->invert.invertRY) result = -result;
+				break;
+			case HID_USAGE_AXIS_RZ:
+				if (map->invert.invertRZ) result = -result;
+				break;
+			}
+
+			if (result > 32767) result = 32767; if (result < -32768) result = -32768;
+
+			out->*entry.field = (int16_t)result;
 		}
-		else {
-			result = raw;
-		}
-
-		// apply inversion
-		switch (entry.usage) {
-		case HID_USAGE_AXIS_X:
-			if (map->invert.invertX) result = -result;
-			break;
-		case HID_USAGE_AXIS_Y:
-			if (map->invert.invertY) result = -result;
-			break;
-		case HID_USAGE_AXIS_Z:
-			if (map->invert.invertZ) result = -result;
-			break;
-		case HID_USAGE_AXIS_RX:
-			if (map->invert.invertRX) result = -result;
-			break;
-		case HID_USAGE_AXIS_RY:
-			if (map->invert.invertRY) result = -result;
-			break;
-		case HID_USAGE_AXIS_RZ:
-			if (map->invert.invertRZ) result = -result;
-			break;
-		}
-
-		if (result > 32767) result = 32767; if (result < -32768) result = -32768;
-
-		out->*entry.field = (int16_t)result;
 	}
 
 	// Hat switch
@@ -906,26 +915,32 @@ unsigned int __stdcall MappingThreadProc(void* param) {
 
 	entry.usage = HID_USAGE_AXIS_X;
 	entry.field = &ButtonsReport::x;
+	entry.raw = 0;
 	mappedAxes.push_back(entry);
 
 	entry.usage = HID_USAGE_AXIS_Y;
 	entry.field = &ButtonsReport::y;
+	entry.raw = 0;
 	mappedAxes.push_back(entry);
 
 	entry.usage = HID_USAGE_AXIS_Z;
 	entry.field = &ButtonsReport::z;
+	entry.raw = 0;
 	mappedAxes.push_back(entry);
 
 	entry.usage = HID_USAGE_AXIS_RX;
 	entry.field = &ButtonsReport::rx;
+	entry.raw = 0;
 	mappedAxes.push_back(entry);
 
 	entry.usage = HID_USAGE_AXIS_RY;
 	entry.field = &ButtonsReport::ry;
+	entry.raw = 0;
 	mappedAxes.push_back(entry);
 
 	entry.usage = HID_USAGE_AXIS_RZ;
 	entry.field = &ButtonsReport::rz;
+	entry.raw = 0;
 	mappedAxes.push_back(entry);
 
 	// Build dynamic mapping
@@ -1094,6 +1109,69 @@ int interruptHandler(DWORD deviceHandle, int32_t a2) {
 				&buttonReport,
 				connectedControllers[index].reportId,
 				connectedControllers[index].map);
+
+			// Custom parsing for DJ Hero turntable — the dongle's HID descriptor
+			// doesn't match the custom 27-byte report, so we read everything directly.
+			Controller* turntableCtl = &connectedControllers[index];
+			if (turntableCtl->isTurntable) {
+				uint8_t* rawBuf = (uint8_t*)driverExtension->interruptTrb.buffer;
+				uint8_t off = hasReportId ? 1 : 0;
+
+				// --- Platter axes (bytes 5-6, 8-bit unsigned, center 0x80) ---
+				uint8_t pL = rawBuf[5 + off];
+				uint8_t pR = rawBuf[6 + off];
+				// Right turntable quirk (PCSX2 #9775): clamp 127 to 128
+				if (pR == 127) pR = 128;
+				// Convert 8-bit centered to 16-bit signed (no extra gain — PS3 uses raw 8-bit)
+				int32_t pX = ((int32_t)pL - 128) * 256;
+				int32_t pY = ((int32_t)pR - 128) * 256;
+				if (pX < -32768) pX = -32768; if (pX > 32767) pX = 32767;
+				if (pY < -32768) pY = -32768; if (pY > 32767) pY = 32767;
+				buttonReport.x = (int16_t)pX;
+				buttonReport.y = (int16_t)pY;
+
+				// --- Effects dial (bytes 19-20, 10-bit, 512 center) -> Right Stick X ---
+				int32_t effects = (rawBuf[20 + off] << 8) | rawBuf[19 + off];
+				int32_t zVal = (effects - 512) * 64;
+				if (zVal < -32768) zVal = -32768;
+				if (zVal > 32767) zVal = 32767;
+				buttonReport.z = (int16_t)zVal;
+
+				// --- Crossfader (bytes 21-22, 10-bit, 512 center) -> absolute axis ---
+				int32_t crossfader = (rawBuf[22 + off] << 8) | rawBuf[21 + off];
+				int32_t rzVal = (crossfader - 512) * 64;
+				if (rzVal < -32768) rzVal = -32768;
+				if (rzVal > 32767) rzVal = 32767;
+				buttonReport.rz = (int16_t)rzVal;
+
+				// --- Face buttons from byte 0 (menu navigation: Cross/Circle/Square/Triangle → A/B/X/Y) ---
+				uint8_t b0 = rawBuf[0 + off];
+				buttonReport.x_button = (b0 & 0x01) ? 1 : 0;  // Square  (Blue) → X
+				buttonReport.a_button = (b0 & 0x02) ? 1 : 0;  // Cross   (Green) → A
+				buttonReport.b_button = (b0 & 0x04) ? 1 : 0;  // Circle  (Red)   → B
+				buttonReport.y_button = (b0 & 0x08) ? 1 : 0;  // Triangle(Euphoria) → Y
+
+				// --- Menu buttons from byte 1 ---
+				uint8_t b1 = rawBuf[1 + off];
+				buttonReport.back  = (b1 & 0x01) ? 1 : 0;  // Select
+				buttonReport.start = (b1 & 0x02) ? 1 : 0;  // Start
+
+				// --- D-Pad from byte 2 (8-direction, 0x0F=neutral) ---
+				uint8_t dpad = rawBuf[2 + off];
+				buttonReport.dpad_up    = (dpad == 0x00 || dpad == 0x01 || dpad == 0x07) ? 1 : 0;
+				buttonReport.dpad_right = (dpad == 0x02 || dpad == 0x01 || dpad == 0x03) ? 1 : 0;
+				buttonReport.dpad_down  = (dpad == 0x04 || dpad == 0x03 || dpad == 0x05) ? 1 : 0;
+				buttonReport.dpad_left  = (dpad == 0x06 || dpad == 0x05 || dpad == 0x07) ? 1 : 0;
+				buttonReport.has_hat_switch = false;
+
+				// --- Platter buttons from byte 23 → color buttons for gameplay (bRightTrigger bits 0-2 per MAME) ---
+				// 0x01=Right Green, 0x02=Right Red, 0x04=Right Blue
+				// 0x10=Left Green,  0x20=Left Red,  0x40=Left Blue
+				uint8_t b23 = rawBuf[23 + off];
+				buttonReport.turntable_green = (b23 & (0x10 | 0x01)) ? 1 : 0;  // any Green
+				buttonReport.turntable_red   = (b23 & (0x20 | 0x02)) ? 1 : 0;  // any Red
+				buttonReport.turntable_blue  = (b23 & (0x40 | 0x04)) ? 1 : 0;  // any Blue
+			}
 		}
 		else if (g_mappingState.active && g_mappingState.controllerIndex == index) {
 			// Collect raw button states during mapping - only check discovered buttons
@@ -1241,6 +1319,7 @@ int HidAddDeviceHook(deviceHandle* deviceHandle) {
 		c.productId = productId;
 		c.map = FindMapping(vendorId, productId);
 		c.nintendo_handshake_state = NINTENDO_HANDSHAKE_STATE::INITIAL;
+		c.isTurntable = (vendorId == 0x12BA) && (productId == 0x0140 || productId == 0x0150);
 
 		HidControllerExtension* controllerDriver = new HidControllerExtension();
 		c.deviceHandle = deviceHandle;
@@ -1319,8 +1398,8 @@ DWORD XamInputGetCapabilitiesExHook(DWORD unk, DWORD user, DWORD flags, XINPUT_C
 			return status;
 
 		capabilities->Type = XINPUT_DEVTYPE_GAMEPAD;
-		capabilities->SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
-		capabilities->Flags = 0;
+		capabilities->SubType = c->map->subType;
+		capabilities->Flags = c->map->flags;
 
 		XINPUT_STATE state;
 		memset(&state, 0, sizeof(XINPUT_STATE));
@@ -1403,23 +1482,31 @@ NTSTATUS XInputdReadStateHook(DWORD dwDeviceContext, PDWORD pdwPacketNumber, PXI
 				break;
 			}
 		}
-		else {
-			if(b.dpad_left)
-				pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
-			if(b.dpad_right)
-				pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
-			if(b.dpad_up)
-				pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_UP;
-			if(b.dpad_down)
-				pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
-		}
+		
+		if(b.dpad_left)
+			pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
+		if(b.dpad_right)
+			pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
+		if(b.dpad_up)
+			pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_UP;
+		if(b.dpad_down)
+			pInputData->wButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
 		
 		pInputData->sThumbRX = b.z;
 		pInputData->sThumbRY = b.rz;
 		pInputData->sThumbLX = b.x;
 		pInputData->sThumbLY = b.y;
 		pInputData->bLeftTrigger = b.rx ? b.rx : (b.l2 ? 255 : 0);
-		pInputData->bRightTrigger = b.ry ? b.ry : (b.r2 ? 255 : 0);
+		// Turntable: encode color buttons into bRightTrigger bits 0-2 (per MAME / native XInput turntable)
+		// Regular controller: existing behavior (crossfader or digital R2)
+		if (c->isTurntable) {
+			pInputData->bRightTrigger =
+				(b.turntable_green ? 0x01 : 0) |
+				(b.turntable_red   ? 0x02 : 0) |
+				(b.turntable_blue  ? 0x04 : 0);
+		} else {
+			pInputData->bRightTrigger = b.ry ? b.ry : (b.r2 ? 255 : 0);
+		}
 
 		if (pdwPacketNumber)
 			*pdwPacketNumber = ++c->packetNumber;
@@ -1438,7 +1525,6 @@ void* XInputdReadStatePtr = nullptr;
 uint16_t* XNotifyTimerPtr = nullptr;
 bool isDevkit = true;
 DWORD UsbPhysicalPage = 0;
-void* NotificationPatchPtr = nullptr;
 bool initFunctionPointers() {
 	isDevkit = *(uint32_t*)(0x8010D334) == 0x00000000;
 	HANDLE kernelHandle = GetModuleHandleA("xboxkrnl.exe");
@@ -1465,7 +1551,6 @@ bool initFunctionPointers() {
 
 	XexGetProcedureAddress(xamHandle, 685, &XamInputGetCapabilitiesEx);
 	XexGetProcedureAddress(xamHandle, 402, &XamInputSetState);
-	XexGetProcedureAddress(xamHandle, 1183, &NotificationPatchPtr);
 
 	if (isDevkit) {
 		DbgPrint("EINTIM: Running in devkit mode\n");
@@ -1515,12 +1600,6 @@ bool initFunctionPointers() {
 	}
 
 	*XNotifyTimerPtr = 1500;
-
-	// Patches notification handling to work without JRPC2, Thanks crow!
-	if (*(short*)((uintptr_t)(NotificationPatchPtr) + 48) == 0x409A) {
-		*(short*)((uintptr_t)(NotificationPatchPtr) + 48) = 0x4800;
-	}
-
 	return true;
 }
 
