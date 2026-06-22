@@ -514,17 +514,6 @@ int32_t setConfigurationComplete(DWORD deviceHandle, int32_t status) {
 				(void*)DS3_HANDSHAKE, 
 				(DWORD)noopCompleteHandler);
 		}
-		if (c.isTurntable) {
-			DbgPrint("EINTIM: Sending turntable LED init\r\n");
-			static uint8_t initLedReport[8];
-			memcpy(initLedReport, turntable_led_report, sizeof(initLedReport));
-			initLedReport[2] = 1;  // LED on
-			SendControlRequest(controllerDriver->deviceHandle,
-				&controllerDriver->controlTrb,
-				0x21, 0x09, 0x0201, 0,
-				sizeof(initLedReport), initLedReport,
-				(DWORD)noopCompleteHandler);
-		}
 		return UsbdQueueAsyncTransfer(controllerDriver->deviceHandle, &controllerDriver->interruptTrb);
 	}
 
