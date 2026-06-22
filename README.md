@@ -1,5 +1,7 @@
-# HidDriver 360
+# HidDriver 360 — DJ Hero Turntable Edition
 Experimental on-console HID driver focussing on providing third party, non xinput controller support to the xbox 360 without dongles.
+
+This fork adds native DJ Hero Turntable support directly on the Xbox 360, eliminating the need for PC bridge tools or custom microcontrollers.
 
 ## What works
 - Supports both 17559 retail and 17489 devkit dashboards
@@ -7,6 +9,15 @@ Experimental on-console HID driver focussing on providing third party, non xinpu
 - Up to 4 concurrent controllers, in combination with original xbox 360 controllers or without them
 - Controllers are registered inside xam and therefore fully recognized in the entire xbox 360 user interface, ring of light will update accordingly, no original controllers are needed etc
 - The controller works in all tested games
+
+### DJ Hero Turntable
+- Xbox 360 Turntable (VID 0x12BA, PID 0x0140)
+- PS3 Turntable (VID 0x12BA, PID 0x0150)
+- Platter axis with configurable sensitivity
+- Crossfader and effects dial
+- Color buttons mapped to XInput (green, red, blue, yellow)
+- Euphoria/center button
+- Reports as `XINPUT_DEVSUBTYPE_DJ_TURNTABLE` for native game recognition
 
 ## Current limitations
 - no rumble support
@@ -43,3 +54,10 @@ https://github.com/user-attachments/assets/f090e5f4-538d-457f-8189-2c5b98579984
 - [Rapidjson](https://github.com/Tencent/rapidjson/) JSON library used to save/load user defined mappings
 - [Lufa](https://github.com/abcminiuser/lufa) HID report descriptor parser implementation used in hiddriver360 is derived from their implementation
 - [iMoD1998](https://github.com/iMoD1998) Creating the Detours library used in hiddriver360
+- [sanjay900](https://github.com/sanjay900) for DJ Hero Turntable emulation in RPCS3 ([#9965](https://github.com/RPCS3/rpcs3/pull/9965)), PCSX2 turntable support, the [Santroller](https://github.com/Santroller/Santroller) firmware platform for microcontrollers, and extensive contributions to the rhythm game controller community
+- [shockdude](https://github.com/shockdude) for DJ Hero Turntable crossfader fixes in RPCS3 ([#13636](https://github.com/RPCS3/rpcs3/pull/13636)) and the [DJHtableUtility](https://github.com/shockdude/DJHtableUtility) for PS3 turntable PC emulation
+- [InvoxiPlayGames](https://github.com/InvoxiPlayGames) for GHLtar emulation and adding DJ Hero Turntable detection in RPCS3 ([#7336](https://github.com/RPCS3/rpcs3/pull/7336))
+- [AniLeo](https://github.com/AniLeo) for adding DJ Hero Turntable VID/PID to RPCS3 ([#5873](https://github.com/RPCS3/rpcs3/pull/5873))
+- [jordan-woyak](https://github.com/jordan-woyak) for DJ Hero Turntable emulation fixes in Dolphin Emulator
+- [TheNathannator](https://github.com/TheNathannator) for the [WiitarThing](https://github.com/TheNathannator/WiitarThing) driver
+- The [MAME](https://github.com/mamedev/mame) dev team for their beatmania turntable implementation which served as reference
