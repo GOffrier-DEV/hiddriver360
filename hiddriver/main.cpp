@@ -136,6 +136,8 @@ const uint16_t SWITCH_PRO_PRODUCT_ID = 0x2009;
 
 const unsigned char nintendo_handshake[2] = { 0x80, 0x02 };
 const unsigned char hid_only_mode[2] = { 0x80, 0x04 };
+// SET_REPORT data for DJ Hero turntable euphoria LED (byte 2 = 1 on, 0 off)
+const uint8_t turntable_led_report[8] = { 0x91, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 #pragma pack(push, 1)
 struct switch_pro_input_report {
@@ -282,6 +284,7 @@ struct Controller {
 	// Turntable-specific
 	bool isTurntable;
 	uint16_t prevEffect;  // for relative effects dial delta
+	uint8_t euphoriaLedState;  // last LED state sent to turntable (0=off, 1=on)
 } __declspec(align(4));
 
 struct MappingState {
@@ -1355,20 +1358,42 @@ int HidAddDeviceHook(deviceHandle* deviceHandle) {
 }
 
 DWORD XamInputSetStateHook(DWORD user, DWORD flags, XINPUT_STATE* pInputState, BYTE bAmplitude, BYTE bFrequency, BYTE bOffset) {
-	DWORD status = XamInputSetStateDetour.GetOriginal<decltype(&XamInputSetStateHook)>()(user, flags, pInputState, bAmplitude, bFrequency, bOffset);
-
 	if ((user & 0xFF) == 0xFF)
 		user = 0;
 
-	if (status == ERROR_DEVICE_NOT_CONNECTED) {
-		Controller* c = nullptr;
-		for (int i = 0; i < (sizeof(connectedControllers) / sizeof(Controller)); i++) {
-			if (connectedControllers[i].controllerDriver &&
-				connectedControllers[i].userIndex == user) {
-				c = &connectedControllers[i];
-				break;
-			}
+	// Find the controller for this user
+	Controller* c = nullptr;
+	for (int i = 0; i < (sizeof(connectedControllers) / sizeof(Controller)); i++) {
+		if (connectedControllers[i].controllerDriver &&
+			connectedControllers[i].userIndex == user) {
+			c = &connectedControllers[i];
+			break;
 		}
+	}
+
+	if (c && c->isTurntable) {
+		// Game signals euphoria LED via non-zero vibration amplitude.
+		// Blinking (meter full but not activated) is done by the game
+		// rapidly toggling the value.
+		uint8_t newLed = (bAmplitude != 0) ? 1 : 0;
+		if (newLed != c->euphoriaLedState) {
+			c->euphoriaLedState = newLed;
+			static uint8_t report[8];
+			memcpy(report, turntable_led_report, sizeof(report));
+			report[2] = newLed;
+			SendControlRequest(
+				c->controllerDriver->deviceHandle,
+				&c->controllerDriver->controlTrb,
+				0x21, 0x09, 0x0201, 0,
+				sizeof(report), report,
+				(DWORD)noopCompleteHandler);
+		}
+		return ERROR_SUCCESS;
+	}
+
+	DWORD status = XamInputSetStateDetour.GetOriginal<decltype(&XamInputSetStateHook)>()(user, flags, pInputState, bAmplitude, bFrequency, bOffset);
+
+	if (status == ERROR_DEVICE_NOT_CONNECTED) {
 		if (!c)
 			return status;
 		return ERROR_SUCCESS;
