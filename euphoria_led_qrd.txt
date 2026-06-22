@@ -2,22 +2,31 @@ Euphoria LED Fix -- Quick Reference Document
 =============================================
 
 1. XamInputSetState signature -- Xenia emulator
-   File: xenia/src/kernel/xam/xam_input.cc
+   https://github.com/xenia-project/xenia/blob/master/src/xenia/kernel/xam/xam_input.cc
    
    XamInputSetState(DWORD user_index, DWORD unk, XINPUT_VIBRATION* vibration)
    
    - 3 parameters (not 6 as our original hook assumed)
    - 3rd param is XINPUT_VIBRATION*, not XINPUT_STATE*
-   - Exported at ordinal 402 (xenia/src/kernel/xam/xam_table.inc)
+   - Exported at ordinal 402
+     https://github.com/xenia-project/xenia/blob/master/src/xenia/kernel/xam/xam_table.inc
 
 2. LED mapping -- Santroller firmware
-   File: santroller/configs/XboxOriginal.cpp
+   https://github.com/Santroller/Santroller/blob/main/src/usb/device/xinput_device.cpp
    
-   Left motor  -> euphoria LED (0 or 255)
-   Right motor -> rumble       (0 or 255)
+   ```cpp
+   if (subtype == DjHeroTurntable)
+       euphoria_led = rumbleReport->leftRumble;
+   ```
    
-   wLeftMotorSpeed >= 32768 -> LED on
-   wLeftMotorSpeed == 0     -> LED off
+   Left motor (wLeftMotorSpeed) -> euphoria LED (0 or 255)
+   Right motor (wRightMotorSpeed) -> rumble (0 or 255)
+   
+   XInputRumbleReport_t:
+   https://github.com/Santroller/Santroller/blob/main/include/protocols/xinput.hpp
+   
+   wLeftMotorSpeed >= 32768  -> LED on
+   wLeftMotorSpeed == 0      -> LED off
 
 3. Our implementation
    File: hiddriver/main.cpp:1360-1402
